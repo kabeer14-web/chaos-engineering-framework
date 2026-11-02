@@ -1,0 +1,23 @@
+flowchart TB
+  USER["Operator browser / terminal"] -->|"port-forward 3000, 9090, 16686, 2746"| GW["Codespace host"]
+  subgraph K["Kubernetes pod network (CNI: kindnet) - service DNS names"]
+    LG["loadgen.app"] -->|"GET / (timeout 3s)"| FES["Service frontend.app:8080"]
+    FES --> FE["frontend pods (app nodes)"]
+    FE -->|"HTTP :8080, timeout 1s, 2 retries in v2"| BES["Service backend.app:8080"]
+    BES --> BE["backend pods (app nodes)"]
+    FE & BE -->|"OTLP gRPC :4317"| OT["otel-collector.observability"]
+    OT -->|"OTLP :4317"| JG["jaeger.observability"]
+    PR["Prometheus kps-prometheus.monitoring:9090"] -->|"scrape /metrics every 5-10s"| FE
+    PR -->|scrape| BE
+    PR -->|scrape| LG
+    PR -->|"scrape cAdvisor, kube-state-metrics"| KS["kubelet / kube-state-metrics"]
+    PT["Promtail (DaemonSet)"] -->|"push logs :3100"| LK["loki.logging"]
+    AI["AIOps analyzer"] -->|"HTTP query_range"| PR
+  end
+  GW --> K
+  F1(["F1 service outage: Chaos Mesh PodChaos kills a backend pod"]) -.-> BE
+  F2(["F2 network latency: NetworkChaos delays traffic leaving one backend pod by 1500ms +/-200ms"]) -.-> BE
+  F3(["F3 resource exhaustion: StressChaos 2 CPU workers on backend"]) -.-> BE
+  F4(["F4 node failure: Ansible docker stop of an app node"]) -.-> BE
+  classDef fault fill:#fdecea,stroke:#c0392b,color:#7b241c;
+  class F1,F2,F3,F4 fault;

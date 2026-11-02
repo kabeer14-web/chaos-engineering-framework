@@ -1,0 +1,47 @@
+# Helm values for prometheus-community/kube-prometheus-stack (release name: kps)
+# Gives us: Prometheus, Grafana, node-exporter, kube-state-metrics, cAdvisor scraping.
+fullnameOverride: kps
+
+alertmanager:
+  enabled: false
+
+# kind does not expose these control-plane endpoints; disable to avoid permanently "down" targets.
+kubeEtcd: {enabled: false}
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeProxy: {enabled: false}
+
+prometheusOperator:
+  nodeSelector: {lab.role: infra}
+
+# Platform components stay on the infra node so that killing an app node never takes monitoring down.
+kube-state-metrics:
+  nodeSelector: {lab.role: infra}
+
+prometheus:
+  prometheusSpec:
+    nodeSelector: {lab.role: infra}
+    scrapeInterval: 10s
+    retention: 12h
+    # pick up ServiceMonitors / rules from every namespace, not only those labelled release=kps
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    resources:
+      requests: {cpu: 200m, memory: 512Mi}
+
+grafana:
+  adminPassword: admin
+  nodeSelector: {lab.role: infra}
+  # Loki (logs) and Jaeger (traces) next to the default Prometheus (metrics) datasource.
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://loki.logging:3100
+    - name: Jaeger
+      uid: jaeger
+      type: jaeger
+      access: proxy
+      url: http://jaeger.observability:16686

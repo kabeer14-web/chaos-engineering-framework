@@ -1,0 +1,46 @@
+# Services (shared by v1 and v2) + the ServiceMonitor that makes Prometheus scrape every app component.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: app
+  labels: {app: frontend, part-of: chaos-lab}
+spec:
+  selector: {app: frontend}
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: app
+  labels: {app: backend, part-of: chaos-lab}
+spec:
+  selector: {app: backend}
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loadgen
+  namespace: app
+  labels: {app: loadgen, part-of: chaos-lab}
+spec:
+  selector: {app: loadgen}
+  ports:
+    - {name: http, port: 9100, targetPort: http}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: chaos-lab-apps
+  namespace: app
+spec:
+  selector:
+    matchLabels: {part-of: chaos-lab}
+  namespaceSelector:
+    matchNames: [app]
+  endpoints:
+    - {port: http, path: /metrics, interval: 5s}

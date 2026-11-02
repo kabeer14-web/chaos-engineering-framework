@@ -1,0 +1,20 @@
+# Experiment 2 - network latency: delay traffic leaving one backend pod by 1.5s.
+# The frontend timeout is 1s, so every request routed to the slow pod fails.
+# Hypothesis: with one backend all requests fail; with 3 backends + retries only a fraction is affected
+#             and retries reach healthy replicas.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: backend-network-delay
+  namespace: app
+spec:
+  action: delay
+  mode: one
+  selector:
+    namespaces: [app]
+    labelSelectors: {app: backend}
+  delay:
+    latency: 1500ms
+    jitter: 200ms
+    correlation: "50"
+  duration: 10m   # the workflow removes the experiment earlier, at the end of the hold period

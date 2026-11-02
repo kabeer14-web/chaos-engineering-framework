@@ -1,0 +1,124 @@
+# VERSION 2 - "hardened". Same images and names as v1; the improvements are all configuration:
+#   redundancy        : 3 backend + 2 frontend replicas, spread across the two app nodes
+#   failover          : readiness probes remove bad pods from the Service; client retries hit another replica
+#   automated recovery: liveness probes, fast (20s) node-failure eviction, HPA scales backend on CPU
+#   safe disruption   : PodDisruptionBudgets keep at least one replica during voluntary disruptions
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: app
+  labels: {app: backend, lab.version: v2}
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: backend}
+  template:
+    metadata:
+      labels: {app: backend, lab.version: v2}
+    spec:
+      nodeSelector: {lab.role: app}
+      tolerations:
+        - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 20}
+        - {key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 20}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app: backend}
+      containers:
+        - name: backend
+          image: chaos-lab/backend:1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability:4317"}
+          ports:
+            - {name: http, containerPort: 8080}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 100m, memory: 96Mi}
+            limits: {cpu: 500m, memory: 192Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: app
+  labels: {app: frontend, lab.version: v2}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: frontend}
+  template:
+    metadata:
+      labels: {app: frontend, lab.version: v2}
+    spec:
+      nodeSelector: {lab.role: app}
+      tolerations:
+        - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 20}
+        - {key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 20}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app: frontend}
+      containers:
+        - name: frontend
+          image: chaos-lab/frontend:1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: BACKEND_URL, value: "http://backend.app:8080"}
+            - {name: BACKEND_TIMEOUT, value: "1.0"}
+            - {name: BACKEND_RETRIES, value: "2"}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability:4317"}
+          ports:
+            - {name: http, containerPort: 8080}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 100m, memory: 96Mi}
+            limits: {cpu: 500m, memory: 192Mi}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: backend, namespace: app}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: backend}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: frontend, namespace: app}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: frontend}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: backend, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: backend}
+  minReplicas: 3
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 50}

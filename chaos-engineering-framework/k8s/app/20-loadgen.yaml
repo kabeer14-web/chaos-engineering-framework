@@ -1,0 +1,29 @@
+# Synthetic user. Pinned to the infra node so node-failure experiments never take the
+# measurement itself down.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: app
+  labels: {app: loadgen}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: loadgen}
+  template:
+    metadata:
+      labels: {app: loadgen}
+    spec:
+      nodeSelector: {lab.role: infra}
+      containers:
+        - name: loadgen
+          image: chaos-lab/loadgen:1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: TARGET_URL, value: "http://frontend.app:8080/"}
+            - {name: RPS, value: "10"}
+          ports:
+            - {name: http, containerPort: 9100}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 300m, memory: 128Mi}

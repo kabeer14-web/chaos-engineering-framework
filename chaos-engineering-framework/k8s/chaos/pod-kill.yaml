@@ -1,0 +1,15 @@
+# Experiment 1 - service outage: kill one backend pod.
+# Hypothesis: with a single replica users see errors until Kubernetes recreates the pod;
+#             with redundancy + probes + retries users see (almost) no impact.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: backend-pod-kill
+  namespace: app
+spec:
+  action: pod-kill
+  mode: one
+  gracePeriod: 0
+  selector:
+    namespaces: [app]
+    labelSelectors: {app: backend}

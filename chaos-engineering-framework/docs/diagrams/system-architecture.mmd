@@ -1,0 +1,40 @@
+flowchart TB
+  subgraph HOST["GitHub Codespace (Docker)"]
+    subgraph KIND["kind cluster 'chaos-lab' - Kubernetes in Docker"]
+      subgraph CP["control-plane node"]
+        API["kube-apiserver / scheduler / controller-manager"]
+      end
+      subgraph INFRA["worker 1  (lab.role=infra) - never killed"]
+        LG["loadgen (synthetic user, 10 req/s)"]
+        PROM["Prometheus"]
+        GRAF["Grafana"]
+        LOKI["Loki + Promtail"]
+        JAE["Jaeger"]
+        OTEL["OpenTelemetry Collector"]
+        CM["Chaos Mesh controller"]
+        ARGO["Argo Workflows"]
+        AIOPS["AIOps analyzer (Python, scikit-learn)"]
+      end
+      subgraph APPN["workers 2 and 3  (lab.role=app) - nodes we may kill"]
+        FE["frontend (Flask)"]
+        BE["backend (Flask)"]
+        CD["Chaos daemon (per node)"]
+      end
+    end
+    ANS["Ansible playbook (node failure: docker stop / start)"]
+  end
+  LG -->|HTTP| FE -->|HTTP + retries| BE
+  FE & BE -->|OTLP traces| OTEL --> JAE
+  OTEL -->|spanmetrics| PROM
+  FE & BE & LG -->|/metrics| PROM
+  APPN -->|container logs| LOKI
+  PROM --> GRAF
+  LOKI --> GRAF
+  JAE --> GRAF
+  ARGO -->|1 apply experiment| CM -->|inject| CD
+  CD -.->|pod kill / latency / CPU stress| APPN
+  ANS -.->|node failure| APPN
+  ARGO -->|2 analyze| AIOPS
+  AIOPS -->|query_range| PROM
+  AIOPS -->|3 action: scale backend| ARGO
+  ARGO -->|4 remediate| API

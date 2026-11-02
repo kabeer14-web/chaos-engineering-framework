@@ -1,0 +1,142 @@
+# Automated chaos experiment with an AIOps feedback loop (Argo Workflows).
+#
+#   baseline -> inject -> hold -> release -> settle -> analyze (AI) -> remediate (only if AI asks)
+#
+# The analyze step queries Prometheus for the experiment window, runs Isolation Forest anomaly
+# detection, computes resilience KPIs, and decides on a remediation. The remediate step executes it.
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: chaos-experiment
+  namespace: argo
+spec:
+  entrypoint: main
+  serviceAccountName: chaos-runner
+  nodeSelector: {lab.role: infra}
+  arguments:
+    parameters:
+      - {name: experiment, value: pod-kill}   # file name in k8s/chaos (without .yaml)
+      - {name: label, value: v1}              # which app version is under test (for the report)
+      - {name: baseline-seconds, value: "60"}
+      - {name: hold-seconds, value: "60"}
+      - {name: settle-seconds, value: "45"}
+  volumes:
+    - name: experiments
+      configMap: {name: chaos-experiments}
+  templates:
+    - name: main
+      steps:
+        - - {name: baseline, template: baseline}
+        - - {name: inject, template: inject}
+        - - {name: hold, template: sleep, arguments: {parameters: [{name: seconds, value: "{{workflow.parameters.hold-seconds}}"}]}}
+        - - {name: release, template: release}
+        - - {name: settle, template: sleep, arguments: {parameters: [{name: seconds, value: "{{workflow.parameters.settle-seconds}}"}]}}
+        - - name: analyze
+            template: analyze
+            arguments:
+              parameters:
+                - {name: start, value: "{{steps.baseline.outputs.parameters.start}}"}
+                - {name: inject, value: "{{steps.inject.outputs.parameters.inject}}"}
+                - {name: release, value: "{{steps.release.outputs.parameters.release}}"}
+        - - name: remediate
+            template: remediate
+            when: "{{steps.analyze.outputs.parameters.action}} != none"
+            arguments:
+              parameters:
+                - {name: action, value: "{{steps.analyze.outputs.parameters.action}}"}
+
+    - name: baseline
+      script:
+        image: alpine/k8s:1.30.2
+        command: [sh]
+        source: |
+          date +%s > /tmp/start
+          echo "steady state observation for {{workflow.parameters.baseline-seconds}}s"
+          sleep {{workflow.parameters.baseline-seconds}}
+      outputs:
+        parameters:
+          - {name: start, valueFrom: {path: /tmp/start}}
+
+    - name: inject
+      script:
+        image: alpine/k8s:1.30.2
+        command: [sh]
+        source: |
+          date +%s > /tmp/inject
+          echo "injecting failure: {{workflow.parameters.experiment}}"
+          kubectl apply -f /experiments/{{workflow.parameters.experiment}}.yaml
+        volumeMounts:
+          - {name: experiments, mountPath: /experiments}
+      outputs:
+        parameters:
+          - {name: inject, valueFrom: {path: /tmp/inject}}
+
+    - name: sleep
+      inputs:
+        parameters:
+          - {name: seconds}
+      script:
+        image: alpine/k8s:1.30.2
+        command: [sh]
+        source: |
+          sleep {{inputs.parameters.seconds}}
+
+    - name: release
+      script:
+        image: alpine/k8s:1.30.2
+        command: [sh]
+        source: |
+          date +%s > /tmp/release
+          echo "removing failure: {{workflow.parameters.experiment}}"
+          kubectl delete -f /experiments/{{workflow.parameters.experiment}}.yaml --ignore-not-found
+          kubectl -n app rollout status deploy/backend --timeout=240s
+        volumeMounts:
+          - {name: experiments, mountPath: /experiments}
+      outputs:
+        parameters:
+          - {name: release, valueFrom: {path: /tmp/release}}
+
+    - name: analyze
+      inputs:
+        parameters:
+          - {name: start}
+          - {name: inject}
+          - {name: release}
+      container:
+        image: chaos-lab/aiops:1.0
+        imagePullPolicy: IfNotPresent
+        command: [python, /srv/analyze.py]
+        args:
+          - --prom
+          - http://kps-prometheus.monitoring:9090
+          - --start
+          - "{{inputs.parameters.start}}"
+          - --inject
+          - "{{inputs.parameters.inject}}"
+          - --release
+          - "{{inputs.parameters.release}}"
+          - --experiment
+          - "{{workflow.parameters.experiment}}"
+          - --label
+          - "{{workflow.parameters.label}}"
+          - --action-file
+          - /tmp/action
+      outputs:
+        parameters:
+          - {name: action, valueFrom: {path: /tmp/action}}
+
+    - name: remediate
+      inputs:
+        parameters:
+          - {name: action}
+      script:
+        image: alpine/k8s:1.30.2
+        command: [sh]
+        source: |
+          ACTION="{{inputs.parameters.action}}"
+          echo "AIOps requested remediation: $ACTION"
+          TARGET=$(echo "$ACTION" | cut -d: -f2)
+          REPLICAS=$(echo "$ACTION" | cut -d: -f3)
+          kubectl -n app scale deploy/$TARGET --replicas=$REPLICAS
+          kubectl -n app rollout status deploy/$TARGET --timeout=240s
+          echo "remediation applied and verified"

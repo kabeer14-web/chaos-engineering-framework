@@ -1,0 +1,10 @@
+flowchart LR
+  U["Synthetic user (loadgen)"] -->|request| FE["frontend"] -->|request| BE["backend"]
+  BE -->|response| FE -->|response| U
+  U -->|"loadgen_requests_total, duration = steady-state signal (METRICS)"| P[("Prometheus")]
+  FE & BE -->|"app_http_* + cAdvisor CPU (METRICS)"| P
+  FE & BE -->|"JSON logs with trace_id (LOGS)"| L[("Loki")]
+  FE & BE -->|"spans (TRACES)"| O["OTel Collector"] --> J[("Jaeger")]
+  O -->|"span-derived RED metrics"| P
+  P & L & J --> G["Grafana dashboard"]
+  P -->|"history of normal behaviour"| A["AIOps: learns baseline"]

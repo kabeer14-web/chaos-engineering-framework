@@ -1,0 +1,29 @@
+# Identity used by the chaos workflow: may create/delete Chaos Mesh experiments, scale deployments
+# (automated remediation) and report step results back to Argo.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: chaos-runner, namespace: argo}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: chaos-runner}
+rules:
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["podchaos", "networkchaos", "stresschaos"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale", "replicasets"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtaskresults"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: chaos-runner}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: chaos-runner}
+subjects:
+  - {kind: ServiceAccount, name: chaos-runner, namespace: argo}

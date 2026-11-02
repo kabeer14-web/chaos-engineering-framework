@@ -1,0 +1,18 @@
+# Experiment 3 - resource exhaustion: saturate CPU inside every backend pod that exists at injection time.
+# Hypothesis: v1 (1 replica, no autoscaling) slows down and times out; v2's HPA adds fresh replicas that are
+#             not stressed, restoring capacity.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: backend-cpu-stress
+  namespace: app
+spec:
+  mode: all
+  selector:
+    namespaces: [app]
+    labelSelectors: {app: backend}
+  stressors:
+    cpu:
+      workers: 2
+      load: 100
+  duration: 10m   # the workflow removes the experiment earlier, at the end of the hold period

@@ -1,0 +1,11 @@
+flowchart LR
+  W["Argo workflow"] -->|"1 apply chaos manifest"| C["Chaos Mesh / Ansible"]
+  C -.->|"2 fault: pod kill, delay, CPU stress, node stop"| S["frontend / backend"]
+  S -->|"errors, latency, fewer replicas, CPU saturation (METRICS)"| P[("Prometheus")]
+  S -->|"error logs and timeouts (LOGS)"| L[("Loki")]
+  S -->|"slow / failed spans (TRACES)"| J[("Jaeger")]
+  P -->|"3 query_range for the experiment window"| A["AIOps analyzer: Isolation Forest + z-score"]
+  A -->|"4 KPIs: availability, MTTR, time-to-detect, SLO breach + insights (JSON report)"| R[("results/")]
+  A -->|"5 decision: scale:backend:N or none"| W
+  W -->|"6 remediate: kubectl scale"| K["Kubernetes API"] -->|"more replicas / failover"| S
+  P --> G["Grafana: failure visible live"]

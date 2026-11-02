@@ -1,0 +1,98 @@
+---
+# Experiment 4 - NODE FAILURE (automated with Ansible).
+# Chaos Mesh cannot stop a machine, so we stop the kind node container (= the node's "VM") the same way
+# a real host crash looks to Kubernetes: kubelet heartbeats stop, node goes NotReady, pods become unreachable.
+#
+# Run:  ansible-playbook ansible/node-failure.yml -e label=v1
+- name: Chaos experiment - node failure with AI analysis
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    label: v1
+    baseline_seconds: 60
+    hold_seconds: 90
+    settle_seconds: 60
+    repo_root: "{{ playbook_dir }}/.."
+    prom: "http://localhost:9090"
+  tasks:
+    - name: Make Prometheus reachable on localhost:9090
+      ansible.builtin.shell: |
+        source {{ repo_root }}/scripts/lib.sh && prom_forward
+      args: {executable: /bin/bash}
+      changed_when: false
+
+    - name: Pick the victim = the app node that currently runs a backend pod (never the infra node)
+      ansible.builtin.command: >
+        kubectl -n app get pods -l app=backend
+        --field-selector=status.phase=Running
+        -o jsonpath={.items[0].spec.nodeName}
+      register: victim_cmd
+      changed_when: false
+
+    - ansible.builtin.set_fact:
+        victim: "{{ victim_cmd.stdout }}"
+
+    - name: Safety check - refuse to kill anything that is not an app node
+      ansible.builtin.command: kubectl get node {{ victim }} -o jsonpath={.metadata.labels.lab\.role}
+      register: role
+      changed_when: false
+      failed_when: role.stdout != 'app'
+
+    - name: Observe steady state
+      ansible.builtin.pause: {seconds: "{{ baseline_seconds }}"}
+
+    - name: Record start/inject time and STOP the node
+      ansible.builtin.shell: |
+        date +%s
+        docker stop {{ victim }}
+      register: inject_out
+      changed_when: true
+    - ansible.builtin.set_fact:
+        t_inject: "{{ inject_out.stdout_lines[0] }}"
+        t_start: "{{ (inject_out.stdout_lines[0] | int) - (baseline_seconds | int) }}"
+
+    - name: Failure active (node is down)
+      ansible.builtin.pause: {seconds: "{{ hold_seconds }}"}
+
+    - name: Release - start the node again and wait until it is Ready
+      ansible.builtin.shell: |
+        date +%s
+        docker start {{ victim }}
+        kubectl wait --for=condition=Ready node/{{ victim }} --timeout=180s
+        kubectl -n app rollout status deploy/backend --timeout=240s
+      register: release_out
+      changed_when: true
+    - ansible.builtin.set_fact:
+        t_release: "{{ release_out.stdout_lines[0] }}"
+
+    - name: Let metrics settle
+      ansible.builtin.pause: {seconds: "{{ settle_seconds }}"}
+
+    - name: AI analysis (Isolation Forest + KPIs)
+      ansible.builtin.command: >
+        python3 {{ repo_root }}/aiops/analyze.py --prom {{ prom }}
+        --start {{ t_start }} --inject {{ t_inject }} --release {{ t_release }}
+        --experiment node-failure --label {{ label }}
+        --out {{ repo_root }}/results/{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}_{{ label }}_node-failure.json
+        --action-file /tmp/node-failure-action
+      register: ai
+      changed_when: false
+
+    - name: AI report
+      ansible.builtin.debug: {msg: "{{ ai.stdout_lines }}"}
+
+    - name: Feedback loop - execute the remediation the AI decided on
+      ansible.builtin.shell: |
+        ACTION=$(cat /tmp/node-failure-action)
+        if [ "$ACTION" != "none" ]; then
+          T=$(echo "$ACTION" | cut -d: -f2); R=$(echo "$ACTION" | cut -d: -f3)
+          kubectl -n app scale deploy/$T --replicas=$R
+          kubectl -n app rollout status deploy/$T --timeout=240s
+          echo "remediation applied: $ACTION"
+        else
+          echo "no remediation required"
+        fi
+      register: remediation
+      changed_when: "'applied' in remediation.stdout"
+    - ansible.builtin.debug: {msg: "{{ remediation.stdout }}"}

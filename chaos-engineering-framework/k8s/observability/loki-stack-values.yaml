@@ -1,0 +1,10 @@
+# Helm values for grafana/loki-stack 2.10.2 (Loki + Promtail). Grafana comes from kube-prometheus-stack.
+loki:
+  enabled: true
+  nodeSelector: {lab.role: infra}
+  persistence:
+    enabled: false
+promtail:
+  enabled: true
+grafana:
+  enabled: false

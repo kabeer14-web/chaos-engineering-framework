@@ -1,0 +1,10 @@
+# 1 control plane + 3 workers. Roles are assigned by scripts/up.sh:
+#   worker 1 -> lab.role=infra  (Prometheus, Grafana, Loki, Jaeger, Argo, load generator ...)
+#   worker 2,3 -> lab.role=app  (the application under test; these are the nodes we may kill)
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker
+  - role: worker

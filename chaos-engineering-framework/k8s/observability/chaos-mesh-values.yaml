@@ -1,0 +1,10 @@
+# Helm values for chaos-mesh/chaos-mesh (release name: chaos-mesh, namespace: chaos-mesh)
+# kind runs containerd, so the chaos daemon must talk to the containerd socket.
+controllerManager:
+  replicaCount: 1                  # default is 3; one is enough for the lab and saves memory
+  nodeSelector: {lab.role: infra}  # never schedule the controller on a node we may kill
+chaosDaemon:                       # DaemonSet: runs on every worker so it can inject faults into local pods
+  runtime: containerd
+  socketPath: /run/containerd/containerd.sock
+dashboard:
+  create: false                    # experiments are driven by manifests / Argo, not by the UI

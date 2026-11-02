@@ -1,0 +1,61 @@
+# VERSION 1 - "weak" baseline. Deliberately has the typical weaknesses chaos engineering exposes:
+#   - single replica of each tier (single point of failure)
+#   - no readiness / liveness probes
+#   - no client-side retries
+#   - no autoscaling, no PodDisruptionBudget, default 5-minute node-failure eviction
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: app
+  labels: {app: backend, lab.version: v1}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: backend}
+  template:
+    metadata:
+      labels: {app: backend, lab.version: v1}
+    spec:
+      nodeSelector: {lab.role: app}
+      containers:
+        - name: backend
+          image: chaos-lab/backend:1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability:4317"}
+          ports:
+            - {name: http, containerPort: 8080}
+          resources:
+            requests: {cpu: 100m, memory: 96Mi}
+            limits: {cpu: 500m, memory: 192Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: app
+  labels: {app: frontend, lab.version: v1}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: frontend}
+  template:
+    metadata:
+      labels: {app: frontend, lab.version: v1}
+    spec:
+      nodeSelector: {lab.role: app}
+      containers:
+        - name: frontend
+          image: chaos-lab/frontend:1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: BACKEND_URL, value: "http://backend.app:8080"}
+            - {name: BACKEND_TIMEOUT, value: "1.0"}
+            - {name: BACKEND_RETRIES, value: "0"}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability:4317"}
+          ports:
+            - {name: http, containerPort: 8080}
+          resources:
+            requests: {cpu: 100m, memory: 96Mi}
+            limits: {cpu: 500m, memory: 192Mi}
