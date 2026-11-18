@@ -1,0 +1,34 @@
+{
+  "experiment": "pod-kill",
+  "app_version": "v1",
+  "window": {
+    "start": 1795004977,
+    "inject": 1795005052,
+    "release": 1795005147,
+    "end": 1795005236
+  },
+  "slo": 0.99,
+  "model": "IsolationForest(n_estimators=200) + robust z-score guard, trained on pre-injection baseline",
+  "metrics": {
+    "baseline_success_rate": 0.9974,
+    "availability_during_fault": 1.0,
+    "min_success_rate": 1.0,
+    "slo_breach_seconds": 0,
+    "mttr_seconds": 0,
+    "recovered": true,
+    "time_to_impact_seconds": null,
+    "time_to_detect_seconds": null,
+    "max_p95_latency_seconds": 0.025,
+    "max_backend_cpu_cores": 0.06,
+    "min_backend_replicas_available": 1.0,
+    "anomalous_samples": 0,
+    "total_samples_after_injection": 37,
+    "max_anomaly_score": 0.686,
+    "max_z_score": 0.8
+  },
+  "insights": [
+    "No user-visible impact: availability stayed at or above the 99% SLO during 'pod-kill'. The system absorbed the failure."
+  ],
+  "action": "none",
+  "action_reason": "System met the SLO or already had enough redundancy; no remediation required."
+}
