@@ -1,0 +1,38 @@
+{
+  "experiment": "network-delay",
+  "app_version": "v1",
+  "window": {
+    "start": 1795005498,
+    "inject": 1795005572,
+    "release": 1795005657,
+    "end": 1795005727
+  },
+  "slo": 0.99,
+  "model": "IsolationForest(n_estimators=200) + robust z-score guard, trained on pre-injection baseline",
+  "metrics": {
+    "baseline_success_rate": 1.0,
+    "availability_during_fault": 0.1346,
+    "min_success_rate": 0.0,
+    "slo_breach_seconds": 95,
+    "mttr_seconds": 95,
+    "recovered": true,
+    "time_to_impact_seconds": 6,
+    "time_to_detect_seconds": 6,
+    "max_p95_latency_seconds": 1.95,
+    "max_backend_cpu_cores": 0.056,
+    "min_backend_replicas_available": 1.0,
+    "anomalous_samples": 19,
+    "total_samples_after_injection": 31,
+    "max_anomaly_score": 0.666,
+    "max_z_score": 100.0
+  },
+  "insights": [
+    "User impact detected: SLO was breached for 95s; availability during the fault was 13.5% (lowest 0.0%).",
+    "The system recovered on its own; outage lasted about 95s (MTTR, +/-15s metric smoothing).",
+    "Single point of failure: at most one backend replica was available while users were impacted. Recommendation: run >=3 replicas spread over nodes, add readiness probes and a PodDisruptionBudget.",
+    "Latency degradation: p95 reached 1.95s. Recommendation: client timeouts + retries to healthy replicas, and horizontal autoscaling.",
+    "The anomaly model flagged abnormal behaviour 6s after injection (19 of 31 samples)."
+  ],
+  "action": "scale:backend:3",
+  "action_reason": "SLO breached with <=1 backend replica available: restore redundancy (scale backend to 3)."
+}

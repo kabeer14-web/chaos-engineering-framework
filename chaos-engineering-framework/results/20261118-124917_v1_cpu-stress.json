@@ -1,0 +1,35 @@
+{
+  "experiment": "cpu-stress",
+  "app_version": "v1",
+  "window": {
+    "start": 1795005921,
+    "inject": 1795005995,
+    "release": 1795006080,
+    "end": 1795006151
+  },
+  "slo": 0.99,
+  "model": "IsolationForest(n_estimators=200) + robust z-score guard, trained on pre-injection baseline",
+  "metrics": {
+    "baseline_success_rate": 1.0,
+    "availability_during_fault": 1.0,
+    "min_success_rate": 1.0,
+    "slo_breach_seconds": 0,
+    "mttr_seconds": 0,
+    "recovered": true,
+    "time_to_impact_seconds": null,
+    "time_to_detect_seconds": 11,
+    "max_p95_latency_seconds": 0.25,
+    "max_backend_cpu_cores": 0.059,
+    "min_backend_replicas_available": 1.0,
+    "anomalous_samples": 2,
+    "total_samples_after_injection": 32,
+    "max_anomaly_score": 0.543,
+    "max_z_score": 11.3
+  },
+  "insights": [
+    "No user-visible impact: availability stayed at or above the 99% SLO during 'cpu-stress'. The system absorbed the failure.",
+    "The anomaly model flagged abnormal behaviour 11s after injection (2 of 32 samples)."
+  ],
+  "action": "none",
+  "action_reason": "System met the SLO or already had enough redundancy; no remediation required."
+}
